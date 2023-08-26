@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>List Visualization</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f0f0f0;
+            margin: 0;
+            padding: 0;
+        }
+
+        h1 {
+            text-align: center;
+            margin: 20px 0;
+        }
+
+        #number-list {
+            list-style: none;
+            padding: 0;
+            text-align: center;
+        }
+
+        #number-list li {
+            margin: 5px;
+            padding: 8px 12px;
+            border-radius: 5px;
+            font-size: 18px;
+            color: #333;
+            position: relative;
+            transition: all 0.3s ease-in-out;
+        }
+
+        .add-animation {
+            background-color: #e0ffe0;
+            animation: flashGreen 1s;
+        }
+
+        .remove-animation {
+            background-color: #ffe0e0;
+            animation: fadeOutRed 1s;
+        }
+
+        @keyframes flashGreen {
+
+            0% {
+                background-color: #e0ffe0;
+            }
+
+            100% {
+                background-color: #a0ffa0;
+            }
+        }
+
+        @keyframes fadeOutRed {
+            0% {
+                opacity: 1;
+                background-color: #ffe0e0;
+            }
+
+            100% {
+                opacity: 0;
+                background-color: #ffe0e0;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <h1>List Visualization</h1>
+    <ul id="number-list">
+        <!-- List items will be populated using JavaScript -->
+    </ul>
+
+    <script>
+        const numberListElement = document.getElementById("number-list");
+
+        // Function to update the number list based on the received data
+        function updateNumberList(data) {
+            numberListElement.innerHTML = ""; // Clear the list
+            data.number_list.forEach(number => {
+                const listItem = document.createElement("li");
+                listItem.textContent = number;
+                numberListElement.appendChild(listItem);
+
+                if (data.added_number === number) {
+                    listItem.classList.add("add-animation");
+                } else if (data.removed_number === number) {
+                    listItem.classList.add("remove-animation");
+                    setTimeout(() => {
+                        listItem.remove();
+                    }, 1000);
+                }
+            });
+        }
+
+        // WebSocket connection to receive updates
+        const websocket = new WebSocket("ws://localhost:8765/");
+
+        websocket.onmessage = async function (event) {
+            const message = JSON.parse(event.data);
+            const [msgType, number] = message;
+
+            // Request updated number list from the server
+            if (msgType === "add_new_item" || msgType === "deleted_item") {
+                const response = await fetch('/get_number_list');
+                const data = await response.json();
+                data.added_number = msgType === "add_new_item" ? number : null;
+                data.removed_number = msgType === "deleted_item" ? number : null;
+                updateNumberList(data);
+            }
+        };
+
+        // Initial request for the number list
+        (async function () {
+            const response = await fetch('/get_number_list');
+            updateNumberList(response);
+            const data = await response.json();
+        })();
+    </script>
+</body>
+
+</html>
