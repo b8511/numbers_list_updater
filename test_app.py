@@ -3,12 +3,16 @@ import sqlite3
 import asyncio
 import threading
 import websockets
-from flask import Flask, render_template, jsonify
+import queue
+from flask import Flask, render_template, jsonify, Response
 
 app = Flask(__name__)
 
 # Create a lock for database access
 db_lock = threading.Lock()
+
+# Queue for SSE messages
+sse_queue = queue.Queue()
 
 
 # Function to get a new database connection and cursor
@@ -71,6 +75,21 @@ def get_number_list():
         return jsonify({"number_list": number_list})
 
 
+@app.route("/stream")
+def stream():
+    def event_stream():
+        messages = queue.Queue()
+        sse_queue.put(messages)
+        try:
+            while True:
+                message = messages.get()
+                yield f"data: {json.dumps(message)}\n\n"
+        except GeneratorExit:
+            sse_queue.queue.remove(messages)
+
+    return Response(event_stream(), mimetype="text/event-stream")
+
+
 async def manage_list(websocket):
     async for message in websocket:
         try:
@@ -79,8 +98,10 @@ async def manage_list(websocket):
             number = int(number)
             if msg_type == "add_new_item":
                 add_number_to_db(number)
+                broadcast_sse({"type": "add_new_item", "number": number})
             elif msg_type == "deleted_item":
                 remove_number_from_db(number)
+                broadcast_sse({"type": "deleted_item", "number": number})
             else:
                 print("Invalid operation or number already exists/doesn't exist")
         except Exception as e:
@@ -112,6 +133,23 @@ def remove_number_from_db(number):
         db_cursor.close()  # Close the cursor
         db_connection.close()  # Close the connection
         print(f"Removed {number} from the list in the database.")
+
+
+def broadcast_sse(message):
+    """Broadcast message to all connected SSE clients"""
+    dead_queues = []
+    for client_queue in list(sse_queue.queue):
+        try:
+            client_queue.put_nowait(message)
+        except:
+            dead_queues.append(client_queue)
+
+    # Remove disconnected clients
+    for dead_queue in dead_queues:
+        try:
+            sse_queue.queue.remove(dead_queue)
+        except:
+            pass
 
 
 async def websocket_client():
