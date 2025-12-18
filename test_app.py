@@ -23,9 +23,7 @@ def initialize_database():
         db_connection, db_cursor = get_db_cursor()
 
         # Check if the table exists
-        db_cursor.execute(
-            "SELECT name FROM sqlite_master WHERE type='table' AND name='numbers'"
-        )
+        db_cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='numbers'")
         table_exists = db_cursor.fetchone()
 
         if not table_exists:
@@ -47,9 +45,7 @@ def initialize_database():
                 (9,),
                 (10,),
             ]
-            db_cursor.executemany(
-                "INSERT INTO numbers (value) VALUES (?)", initial_values
-            )
+            db_cursor.executemany("INSERT INTO numbers (value) VALUES (?)", initial_values)
             db_connection.commit()
 
 
@@ -118,7 +114,7 @@ def remove_number_from_db(number):
         print(f"Removed {number} from the list in the database.")
 
 
-async def main():
+async def websocket_client():
     # Initialize the database structure and populate with initial values
     initialize_database()
 
@@ -126,5 +122,14 @@ async def main():
         await manage_list(websocket)
 
 
+def run_websocket_client():
+    asyncio.run(websocket_client())
+
+
 if __name__ == "__main__":
-    asyncio.run(main())
+    # Start WebSocket client in a separate thread
+    ws_thread = threading.Thread(target=run_websocket_client, daemon=True)
+    ws_thread.start()
+
+    # Start Flask server
+    app.run(debug=True, port=5000)
