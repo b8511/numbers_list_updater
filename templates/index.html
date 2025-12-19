@@ -75,49 +75,92 @@
 
     <script>
       const numberListElement = document.getElementById("number-list");
+      let currentList = [];
 
-      // Function to update the number list based on the received data
-      function updateNumberList(data) {
-        numberListElement.innerHTML = ""; // Clear the list
-        data.number_list.forEach((number) => {
+      // Function to render the entire list (used only for initial load)
+      function renderList(numberList) {
+        numberListElement.innerHTML = "";
+        numberList.forEach((number) => {
           const listItem = document.createElement("li");
           listItem.textContent = number;
+          listItem.dataset.value = number;
           numberListElement.appendChild(listItem);
-
-          if (data.added_number === number) {
-            listItem.classList.add("add-animation");
-          } else if (data.removed_number === number) {
-            listItem.classList.add("remove-animation");
-            setTimeout(() => {
-              listItem.remove();
-            }, 1000);
-          }
         });
+        currentList = [...numberList];
       }
 
-      // SSE connection to receive updates from Flask app
-      const eventSource = new EventSource("/stream");
-
-      eventSource.onmessage = async function (event) {
-        const message = JSON.parse(event.data);
-        const msgType = message.type;
-        const number = message.number;
-
-        // Request updated number list from the server
-        if (msgType === "add_new_item" || msgType === "deleted_item") {
-          const response = await fetch("/get_number_list");
-          const data = await response.json();
-          data.added_number = msgType === "add_new_item" ? number : null;
-          data.removed_number = msgType === "deleted_item" ? number : null;
-          updateNumberList(data);
+      // Function to add a number to the list with animation
+      function addNumber(number) {
+        // Check if already exists
+        if (currentList.includes(number)) {
+          return;
         }
-      };
+
+        currentList.push(number);
+        currentList.sort((a, b) => a - b);
+
+        // Find the correct position to insert
+        const listItem = document.createElement("li");
+        listItem.textContent = number;
+        listItem.dataset.value = number;
+        listItem.classList.add("add-animation");
+
+        // Insert at the correct position
+        const existingItems = Array.from(numberListElement.children);
+        let inserted = false;
+        for (let i = 0; i < existingItems.length; i++) {
+          if (parseInt(existingItems[i].dataset.value) > number) {
+            numberListElement.insertBefore(listItem, existingItems[i]);
+            inserted = true;
+            break;
+          }
+        }
+        if (!inserted) {
+          numberListElement.appendChild(listItem);
+        }
+      }
+
+      // Function to remove a number from the list with animation
+      function removeNumber(number) {
+        const index = currentList.indexOf(number);
+        if (index === -1) {
+          return;
+        }
+
+        currentList.splice(index, 1);
+
+        const listItem = Array.from(numberListElement.children).find(
+          (item) => parseInt(item.dataset.value) === number
+        );
+
+        if (listItem) {
+          listItem.classList.add("remove-animation");
+          setTimeout(() => {
+            listItem.remove();
+          }, 1000);
+        }
+      }
 
       // Initial request for the number list
       (async function () {
         const response = await fetch("/get_number_list");
         const data = await response.json();
-        updateNumberList(data);
+        renderList(data.number_list);
+
+        // Connect to SSE stream AFTER initial list is loaded
+        const eventSource = new EventSource("/stream");
+
+        eventSource.onmessage = function (event) {
+          const message = JSON.parse(event.data);
+          const msgType = message.type;
+          const number = message.number;
+
+          if (msgType === "add_new_item") {
+            addNumber(number);
+          } else if (msgType === "deleted_item") {
+            removeNumber(number);
+          }
+        };
       })();
     </script>
   </body>
